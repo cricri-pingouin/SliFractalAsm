@@ -38,17 +38,6 @@ uses
 
 {$R *.dfm}
 
-//Function CalcMagnitude(z1, z2: Single): Single; //Register;
-//Asm
-//        fld     z1
-//        fld     z1
-//        fmul
-//        fld     z2
-//        fld     z2
-//        fmul
-//        fmul
-//End;
-
 procedure TForm1.DrawMandelbrot(X, Y, MinX, MinY: Single; SizeX, SizeY, MaxCount: Integer);
 var
   c1, c2, z1, z2, Four: Single;
@@ -135,7 +124,7 @@ begin
         fld     Four
         fcompp         //Make sure we pop both st(0) and st(1)!
         fstsw   ax     //retrieve comparison result in the AX register
-        fwait          //insure the previous instruction is completed
+        //fwait          //insure the previous instruction is completed
         sahf           //transfer the condition codes to the CPU's flag register
         //ja      criteria_greater //criteria was ST(0) for comparison
         //jb      criteria_lower
@@ -170,7 +159,7 @@ begin
       end;
       //Colour pixel at Z coordinates
       //Colour from palette with index = number of iterations
-      BufferArray[i, j] := MaxIterations - Count;
+      BufferArray[i, j] := Count;
       c1 := c1 + X;
     end;
     c2 := c2 + Y;
@@ -183,7 +172,7 @@ begin
     for i := 0 to SizeX - 1 do //Width-1 or pointer will fall out=crash!
     begin
       //Set pixel colour according to index value in palettes
-      P^ := Palette[MaxIterations - BufferArray[j, i]];
+      P^ := Palette[BufferArray[j, i]];
       //Increment pointer AFTER, otherwise we fail to process leftmost column
       Inc(P);
     end;
