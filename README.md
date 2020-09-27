@@ -1,6 +1,8 @@
 # SliFractalAsm
 Draw a Mandelbrot set fractal, written in Turbo Delphi (using scanline).
+
 Same as SliFractal:
+
 https://github.com/cricri-pingouin/SliFractal
 
 Except the Mandelbrot set test routine is written in FPU assembly language.
