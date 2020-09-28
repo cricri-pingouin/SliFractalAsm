@@ -48,7 +48,7 @@ var
   P: PRGBTriple; //Scanline pointer
   Palette: array[0..255] of TRGBTriple; //24bits RGB palettes
 label
-  _start, _continue, _end;
+  _start, _end;
 begin
 //Count will always be from 1<= count <= MaxIterations
   //Initialise. otherwise unpredictable colours from whatever already in memory
@@ -124,7 +124,7 @@ begin
         fld     Four
         fcompp         //Make sure we pop both st(0) and st(1)!
         fstsw   ax     //retrieve comparison result in the AX register
-        //fwait          //insure the previous instruction is completed
+        //fwait          //ensure the previous instruction is completed
         sahf           //transfer the condition codes to the CPU's flag register
         //ja      criteria_greater //criteria was ST(0) for comparison
         //jb      criteria_lower
@@ -141,11 +141,11 @@ begin
         fsub
         fld     c1
         fadd
-        fstp    z1     //z1 = st(0)
+        fstp    z1     //z1 = st(0), hence why I needed a backup in the stack
         //z2 = 2 * z1 * z2 + c2
         fld     z2
         fmul           //fmul to old z1 value still in stack
-        fadd    st, st //OR: fld st fadd, OR: fld1 fld1 fadd fmul, OR: fld Two fmul (slower!?)
+        fadd    st, st //OR: fld st fadd, OR: fld1 fld1 fadd fmul, OR: fld Two fmul (where Two := 2.0; slower!?)
         fld     c2
         fadd
         fstp    z2 //z2 = st(0)
@@ -159,7 +159,7 @@ begin
       end;
       //Colour pixel at Z coordinates
       //Colour from palette with index = number of iterations
-      BufferArray[i, j] := Count;
+      BufferArray[i, j] := Count; //Asm algorithm makes this Count the colour index rather than the iterations count
       c1 := c1 + X;
     end;
     c2 := c2 + Y;
@@ -172,7 +172,7 @@ begin
     for i := 0 to SizeX - 1 do //Width-1 or pointer will fall out=crash!
     begin
       //Set pixel colour according to index value in palettes
-      P^ := Palette[BufferArray[j, i]];
+      P^ := Palette[BufferArray[j, i]]; //Asm version: BufferArray now contains the colour index
       //Increment pointer AFTER, otherwise we fail to process leftmost column
       Inc(P);
     end;
