@@ -122,15 +122,48 @@ begin
         fmul    st, st
         fadd
         fld     Four
+//                            C3   C2   C0
+//     If ST(0) > source      0    0    0
+//     If ST(0) < source      0    0    1
+//     If ST(0) = source      1    0    0
+//     If ST(0) ? source      1    1    1
         fcompp         //Make sure we pop both st(0) and st(1)!
-        fstsw   ax     //retrieve comparison result in the AX register
-        //fwait          //ensure the previous instruction is completed
+//fstsw/fnstsw copy to ax:  C3 - - - C2 C1 C0 - - - - - - - -
+        fnstsw  ax     //Store FPU status word in AX register, no checking
+        //fstsw   ax     //Store FPU status word in AX register after checking for pending unmasked floating-point exceptions
+        //fwait          //ensure the previous instruction is completed; not required on new CPUs?
         sahf           //transfer the condition codes to the CPU's flag register
         //ja      criteria_greater //criteria was ST(0) for comparison
         //jb      criteria_lower
         //jz      criteria_equal
         jb      _end   //z1 * z1 + z2 * z2 > 4.0
         //jz      _end   //need that too? Not sure! Maybe not as we skip the dec count
+
+        //OR:
+        //and ax,256 //checking 8th bit of ax is not faster than copying codes to flags!
+        //jnz _end
+
+        //OR: using fcomip
+//| Comparison results | Z | P | C |
+//+--------------------+---+---+---+
+//| ST0 > ST(i)        | 0 | 0 | 0 |
+//| ST0 < ST(i)        | 0 | 0 | 1 |
+//| ST0 = ST(i)        | 1 | 0 | 0 |
+//| unordered          | 1 | 1 | 1 |  one or both operands were NaN.
+//+--------------+---+---+-----+------------------------------------+
+//| Test         | Z | C | Jcc | Notes                              |
+//+--------------+---+---+-----+------------------------------------+
+//| ST0 < ST(i)  | X | 1 | JB  | ZF will never be set when CF = 1   |
+//| ST0 <= ST(i) | 1 | 1 | JBE | Either ZF or CF is ok              |
+//| ST0 == ST(i) | 1 | X | JE  | CF will never be set in this case  |
+//| ST0 != ST(i) | 0 | X | JNE |                                    |
+//| ST0 >= ST(i) | X | 0 | JAE | As long as CF is clear we are good |
+//| ST0 > ST(i)  | 0 | 0 | JA  | Both CF and ZF must be clear       |
+//+--------------+---+---+-----+------------------------------------+
+//Legend: X: don't care, 0: clear, 1: set
+        //fcomip  st(0), st(1) //fcomip is slower than fcompp + transfer C0-C3 to flags!
+        //fstp st(0) //I think this might be because fcompp pops twice whereas fcomip pops once so we need to pop st(1) too
+        //jbe     _end
         //z1 = z1 * z1 - z2 * z2 + c1
         //Why didn't I dup z^2 earlier? Because the stack needs being empty, otherwise error
         fld     z1
