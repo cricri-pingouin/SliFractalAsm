@@ -115,6 +115,11 @@ begin
       //If |z| >=2 then z is not a member of a Mandelbrot set
       asm
         //while ((z1 * z1 + z2 * z2 < 4.0) and (Count < MaxIterations)) do
+// Next 4 lines not faster than z1 := 0; z2 := 0;
+//        fldz
+//        fstp    z1
+//        fldz
+//        fstp    z2
         _start  :
         fld     z1
         fmul    st, st
