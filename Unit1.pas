@@ -40,17 +40,13 @@ uses
 
 procedure TForm1.DrawMandelbrot(X, Y, MinX, MinY: Single; SizeX, SizeY, MaxCount: Integer);
 var
-  c1, c2, z1, z2, Four: Single;
+  c1, c2, z1, z2, Four: Double;
   i, j, Count: Integer;
   //Scanline stuff
   PicBuffer: TBitmap; //buffer
   BufferArray: array of array of Byte; // Multi-dimension array
   P: PRGBTriple; //Scanline pointer
   Palette: array[0..255] of TRGBTriple; //24bits RGB palettes
-type
-  Vector = array[0..2] of Single;
-
-  VectorInt = array[0..3] of Integer;
 label
   _start, _end, _realend;
 begin
