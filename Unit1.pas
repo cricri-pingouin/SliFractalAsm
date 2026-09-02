@@ -47,8 +47,12 @@ var
   BufferArray: array of array of Byte; // Multi-dimension array
   P: PRGBTriple; //Scanline pointer
   Palette: array[0..255] of TRGBTriple; //24bits RGB palettes
+type
+  Vector = array[0..2] of Single;
+
+  VectorInt = array[0..3] of Integer;
 label
-  _start, _end;
+  _start, _end, _realend;
 begin
 //Count will always be from 1<= count <= MaxIterations
   //Initialise. otherwise unpredictable colours from whatever already in memory
@@ -108,53 +112,62 @@ begin
     c1 := MinX;
     for j := 0 to SizeY - 1 do    //Compute series iterations for this Z coordinate
     begin
-      z1 := 0;
-      z2 := 0;
-      Count := MaxIterations;
+      //z1 := 0;  //Can be done in asm
+      //z2 := 0;
+      Count := MaxIterations; //mov ecx, MaxIterations ... dec ecx ... mov Count, ecx <- in asm is slower?!
       //Count is depth of iteration of the mandelbrot set
       //If |z| >=2 then z is not a member of a Mandelbrot set
       asm
-// Next 4 lines not faster than z1 := 0; z2 := 0;
-//        fldz
-//        fstp    z1
-//        fldz
-//        fstp    z2
+        //mov     ecx, MaxIterations
+        // Next 4 lines not faster than z1 := 0; z2 := 0; but not slower either
+        fldz
+        fstp    z1
+        fldz
+        fstp    z2
         //while ((z1 * z1 + z2 * z2 < 4.0) and (Count < MaxIterations)) do
         _start  :
         fld     z1
         fmul    st, st
+        fld     st    //dup z1^2 for next step
         fld     z2
         fmul    st, st
+        fld     st    //dup z2^2 for next step
+        fxch    st(2) //get back z1^2 in st(0) to calc z1^2+z2^2
         fadd
         fld     Four
-//                            C3   C2   C0
+
+//Is it <4?
+//Method 1: fcompp fstsw ax sahf jb
+//     FCOMP                 C3   C2   C0
 //     If ST(0) > source      0    0    0
 //     If ST(0) < source      0    0    1
 //     If ST(0) = source      1    0    0
 //     If ST(0) ? source      1    1    1
-        fcompp         //Make sure we pop both st(0) and st(1)!
-//fstsw/fnstsw copy to ax:  C3 - - - C2 C1 C0 - - - - - - - -
-        fnstsw  ax     //Store FPU status word in AX register, no checking
-        //fstsw   ax     //Store FPU status word in AX register after checking for pending unmasked floating-point exceptions
+    //fcompp         //Make sure we pop both st(0) and st(1)!
+        //fstsw/fnstsw copy to ax:  C3 - - - C2 C1 C0 - - - - - - - -
+        //fnstsw  ax     //Store FPU status word in AX register, no checking
+    //fstsw   ax     //Store FPU status word in AX register after checking for pending unmasked floating-point exceptions
         //fwait          //ensure the previous instruction is completed; not required on new CPUs?
-        sahf           //transfer the condition codes to the CPU's flag register
+    //sahf           //transfer the condition codes to the CPU's flag register
         //ja      criteria_greater //criteria was ST(0) for comparison
         //jb      criteria_lower
         //jz      criteria_equal
-        jb      _end   //z1 * z1 + z2 * z2 > 4.0
+    //jb      _end   //z1 * z1 + z2 * z2 > 4.0
         //jz      _end   //need that too? Not sure! Maybe not as we skip the dec count
 
-        //OR:
-        //and ax,256 //checking 8th bit of ax is not faster than copying codes to flags!
+//Method 2: same as method 1 but test ax bit instead of sahf (not faster)
+        //fcompp
+        //fstsw   ax
+        //and ax,256
         //jnz _end
 
-        //OR: using fcomip
-//| Comparison results | Z | P | C |
+//Method 3: fcomip fstp jbe (Google: FCOMIP is the modern, faster instruction because it directly modifies the CPU's main FLAGS register, eliminating extra steps)
+//| FCOMIP results | Z | P | C |
 //+--------------------+---+---+---+
-//| ST0 > ST(i)        | 0 | 0 | 0 |
-//| ST0 < ST(i)        | 0 | 0 | 1 |
-//| ST0 = ST(i)        | 1 | 0 | 0 |
-//| unordered          | 1 | 1 | 1 |  one or both operands were NaN.
+//| ST0 > ST(i)    | 0 | 0 | 0 |
+//| ST0 < ST(i)    | 0 | 0 | 1 |
+//| ST0 = ST(i)    | 1 | 0 | 0 |
+//| unordered      | 1 | 1 | 1 |  one or both operands were NaN.
 //+--------------+---+---+-----+------------------------------------+
 //| Test         | Z | C | Jcc | Notes                              |
 //+--------------+---+---+-----+------------------------------------+
@@ -166,34 +179,42 @@ begin
 //| ST0 > ST(i)  | 0 | 0 | JA  | Both CF and ZF must be clear       |
 //+--------------+---+---+-----+------------------------------------+
 //Legend: X: don't care, 0: clear, 1: set
-        //fcomip  st(0), st(1) //fcomip is slower than fcompp + transfer C0-C3 to flags!
-        //fstp st(0) //I think this might be because fcompp pops twice whereas fcomip pops once so we need to pop st(1) too
-        //jbe     _end
+        fcomip  st(0), st(1)
+        fstp    st //Unlike fcompp, fcomip pops the stack once not twice, so need to pop again
+        jbe     _end
+
         //z1 = z1 * z1 - z2 * z2 + c1
-        //Why didn't I dup z^2 earlier? Because the stack needs being empty, otherwise error
-        fld     z1
-        fld     st     //z1 twice in stack: st(0) for z1 calc, st(1) for z2 calc later; here, fld z1 slower than fld st (!?)
-        fmul    st, st //OR: fld z1 fld z1 fmul, OR: fld z1 fld st fmul (slower!?)
-        fld     z2
-        fmul    st, st //same comment as z1
+        //If we didn't duplicates z^2 values in previous step, we'd need to calc them again!
+        //fld     st
+        //fmul    st, st
+        //fld     z2
+        //fmul    st, st
+        //But we did so we have st(0)=z2^2 and st(1)=z1^2 copies from previous step
         fsub
         fld     c1
-        fadd
-        fstp    z1     //z1 = st(0), hence why I needed a backup in the stack
+        fadd          //result = st(0) = z1 * z1 - z2 * z2 + c1
+        fld     z1    //keep a backup of z1 for next step
+        fxch    st(1) //Get back our result in st(0), backup in st(1)
+        fstp    z1    //z1 = st(0) = result, hence why we needed a backup
         //z2 = 2 * z1 * z2 + c2
         fld     z2
-        fmul           //fmul to old z1 value still in stack
-        fadd    st, st //OR: fld st fadd, OR: fld1 fld1 fadd fmul, OR: fld Two fmul (where Two := 2.0; slower!?)
+        fmul          //fmul to old z1 value copy in st(1)
+        fadd    st, st //*2; OR: fld st fadd, OR: fld1 fld1 fadd fmul, OR: fld Two fmul (where Two := 2.0; slower)
         fld     c2
         fadd
         fstp    z2 //z2 = st(0)
         //Dec Count
-        dec     Count
-        jnz     _start //while ... (Count < MaxIterations), here changed to Count>0 to save test
+        dec     Count  //dec ecx ////See comment before asm section
+        //while ... (Count < MaxIterations), here changed to Count>0 so can do jnz and save cmp
+        jnz     _start
+        jmp     _realend
         _end    :
-        //Subsequent lines was in the hope that flushing stack now would prevent error if not empty, but it doesn't!
-        //emms   //clear stack: slow
-        //finit  //clear stack: slower
+        //Due to duplicating the z^2 values, downside is if we get here they are still in stack, need pop twice to empty
+        //OR: fucompp (comp and pops twice same speed, same speed but less compatible?), OR: emms (slower)
+        fstp st
+        fstp st
+        _realend :
+        //mov     Count, ecx //See comment before asm section
       end;
       //Colour pixel at Z coordinates
       //Colour from palette with index = number of iterations
