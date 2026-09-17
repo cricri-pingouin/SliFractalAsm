@@ -12,6 +12,7 @@ type
     mniDraw: TMenuItem;
     mniOptions: TMenuItem;
     mniPNG: TMenuItem;
+    mniExit: TMenuItem;
     Image1: TImage;
     procedure DrawMandelbrot(X, Y, MinX, MinY: Single; SizeX, SizeY, MaxCount: Integer);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
@@ -19,6 +20,7 @@ type
     procedure mniDrawClick(Sender: TObject);
     procedure mniOptionsClick(Sender: TObject);
     procedure mniPNGClick(Sender: TObject);
+    procedure mniExitClick(Sender: TObject);
   private
     { Private declarations }
   public
@@ -41,7 +43,7 @@ uses
 procedure TForm1.DrawMandelbrot(X, Y, MinX, MinY: Single; SizeX, SizeY, MaxCount: Integer);
 var
   c1, c2, z1, z2, Four: Double;
-  i, j, Count: Integer;
+  i, j, Count, Four2: Integer;
   //Scanline stuff
   PicBuffer: TBitmap; //buffer
   BufferArray: array of array of Byte; // Multi-dimension array
@@ -103,10 +105,10 @@ begin
   //Calculate Mandelbrot set
   Four := 4.0;
   c2 := MinY;
-  for i := 0 to SizeX - 1 do
+  for i := 0 to SizeY - 1 do
   begin
     c1 := MinX;
-    for j := 0 to SizeY - 1 do    //Compute series iterations for this Z coordinate
+    for j := 0 to SizeX - 1 do    //Compute series iterations for this Z coordinate
     begin
       //z1 := 0;  //Can be done in asm
       //z2 := 0;
@@ -130,8 +132,7 @@ begin
         fld     st    //dup z2^2 for next step
         fxch    st(2) //get back z1^2 in st(0) to calc z1^2+z2^2
         fadd
-        fld     Four
-
+        fld     Four  //OR: could do fild Four where Four is an integer but the conversion makes it slower
 //Is it <4?
 //Method 1: fcompp fstsw ax sahf jb
 //     FCOMP                 C3   C2   C0
@@ -150,13 +151,11 @@ begin
         //jz      criteria_equal
     //jb      _end   //z1 * z1 + z2 * z2 > 4.0
         //jz      _end   //need that too? Not sure! Maybe not as we skip the dec count
-
 //Method 2: same as method 1 but test ax bit instead of sahf (not faster)
         //fcompp
         //fstsw   ax
         //and ax,256
         //jnz _end
-
 //Method 3: fcomip fstp jbe (Google: FCOMIP is the modern, faster instruction because it directly modifies the CPU's main FLAGS register, eliminating extra steps)
 //| FCOMIP results | Z | P | C |
 //+--------------------+---+---+---+
@@ -178,7 +177,6 @@ begin
         fcomip  st(0), st(1)
         fstp    st //Unlike fcompp, fcomip pops the stack once not twice, so need to pop again
         jbe     _end
-
         //z1 = z1 * z1 - z2 * z2 + c1
         //If we didn't duplicates z^2 values in previous step, we'd need to calc them again!
         //fld     st
@@ -207,14 +205,14 @@ begin
         _end    :
         //Due to duplicating the z^2 values, downside is if we get here they are still in stack, need pop twice to empty
         //OR: fucompp (comp and pops twice same speed, same speed but less compatible?), OR: emms (slower)
-        fstp st
-        fstp st
+        fstp    st
+        fstp    st
         _realend :
         //mov     Count, ecx //See comment before asm section
       end;
       //Colour pixel at Z coordinates
       //Colour from palette with index = number of iterations
-      BufferArray[i, j] := Count; //Asm algorithm makes this Count the colour index rather than the iterations count
+      BufferArray[j, i] := Count; //Asm algorithm makes this Count the colour index rather than the iterations count
       c1 := c1 + X;
     end;
     c2 := c2 + Y;
@@ -227,7 +225,7 @@ begin
     for i := 0 to SizeX - 1 do //Width-1 or pointer will fall out=crash!
     begin
       //Set pixel colour according to index value in palettes
-      P^ := Palette[BufferArray[j, i]]; //Asm version: BufferArray now contains the colour index
+      P^ := Palette[BufferArray[i, j]]; //Asm version: BufferArray now contains the colour index
       //Increment pointer AFTER, otherwise we fail to process leftmost column
       Inc(P);
     end;
@@ -282,6 +280,9 @@ var
   dX, dY: Single;
   Start, Finish: Int64;
 begin
+  mniDraw.Enabled := False;
+  mniOptions.Enabled := False;
+  mniPNG.Enabled := False;
   //Size window
   ClientWidth := CanvasWidth;
   ClientHeight := CanvasHeight;
@@ -297,6 +298,8 @@ begin
   DrawMandelbrot(dX, dY, Xmin, Ymin, CanvasWidth, CanvasHeight, MaxIterations);
   Finish := GetTickCount;
   Caption := 'Time: ' + IntToStr(Finish - Start) + 'ms';
+  mniDraw.Enabled := True;
+  mniOptions.Enabled := True;
   mniPNG.Enabled := True;
 end;
 
@@ -331,6 +334,11 @@ begin
   finally
     PNG.Free;
   end
+end;
+
+procedure TForm1.mniExitClick(Sender: TObject);
+begin
+  Close;
 end;
 
 end.
